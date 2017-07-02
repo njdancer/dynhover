@@ -1,0 +1,54 @@
+#!/bin/bash
+# Check for required parameters
+[[ $# -lt 4 ]] && echo "Usage: $0 USERNAME PASSWORD DNS_ID DOMAIN_NAME" && exit 1
+
+USERNAME=${1}
+PASSWORD=${2}
+DNS_ID=${3}
+DOMAIN_NAME=${4}
+
+IP_PATTERN="[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}"
+
+# Exit script if external IP is invalid
+EXTERNAL_IP=$(curl "http://icanhazip.com" -s)
+echo "$EXTERNAL_IP"|grep -E "$IP_PATTERN">/dev/null
+if [[ $? -eq 1 ]]; then
+  echo "[$(date +'%Y-%m-%d %T %z')] ERROR: External IP is invalid"
+  exit 2
+fi
+
+# If registered IP is invalid present warning and attempt to update anyway
+REGISTERED_IP=$(dig +short $DOMAIN_NAME @ns1.hover.com)
+echo "$REGISTERED_IP"|grep -E "$IP_PATTERN">/dev/null
+if [[ $? -eq 1 ]]; then
+  echo "[$(date +'%Y-%m-%d %T %z')] WARNING: Currently registered IP is invalid - There may be an issue accessing Hover."
+fi
+
+# Compare external and registered IP and update if different
+if [[ "$EXTERNAL_IP" != "$REGISTERED_IP" ]]; then
+  HOVER_RESULT="$(curl "https://www.hover.com/api/dns/${DNS_ID}" \
+    -X PUT            \
+    -d "content=${EXTERNAL_IP}" \
+    -s                \
+    -b <(curl "https://www.hover.com/api/login" \
+          -X POST                   \
+          -G                        \
+          -d "username=${USERNAME}" \
+          -d "password=${PASSWORD}" \
+          -s                        \
+          -o /dev/null              \
+          -c -))"
+
+  # Check for normal response from Hover API
+  echo $HOVER_RESULT|grep "{\"succeeded\":true}">/dev/null
+  if [[ $? -eq 1 ]]; then
+    echo "[$(date +'%Y-%m-%d %T %z')] ERROR: Unexpected response while trying to update Hover"
+    echo "----------------------------------------"
+    echo "$HOVER"
+    echo "----------------------------------------"
+  else
+    echo "[$(date +'%Y-%m-%d %T %z')] INFO: Hover updated to $EXTERNAL_IP"
+  fi
+else
+  echo "[$(date +'%Y-%m-%d %T %z')] INFO: Hover already up-to-date"
+fi

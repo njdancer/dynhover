@@ -1,0 +1,16 @@
+#!/bin/bash
+trap endLoop INT
+
+function endLoop() {
+        echo "Exiting."
+        exit 3
+}
+
+echo "Starting dynhover for $HOVER_DOMAIN"
+while true
+do
+  ./updatehover $HOVER_USERNAME $HOVER_PASSWORD $HOVER_DNS_ID $HOVER_DOMAIN
+  for ((n=0;n<300;n++))
+    do sleep 1
+  done
+done
